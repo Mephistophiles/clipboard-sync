@@ -1,0 +1,30 @@
+pkgname=clipboard-sync-git
+pkgver=0.1.0.9.g9023077
+pkgrel=1
+epoch=1
+pkgdesc="An clipboard sync over HTTP"
+arch=('x86_64' 'i686')
+url="https://github.com/Mephistophiles/clipboard-sync.git"
+license=('MIT')
+depends=()
+makedepends=('cargo' 'git')
+optdepends=()
+provides=('clipboard-sync')
+conflicts=()
+source=($pkgname::git+https://github.com/Mephistophiles/clipboard-sync.git)
+sha256sums=('SKIP')
+
+pkgver() {
+	cd $pkgname
+	echo $(grep '^version =' Cargo.toml|head -n1|cut -d\" -f2).$(git rev-list --count HEAD).g$(git describe --always)
+}
+
+build() {
+	cd $pkgname
+	cargo build --release
+}
+
+package() {
+	cd $pkgname
+	install -D -m755 "$srcdir/$pkgname/target/release/clipboard-sync" "$pkgdir/usr/bin/clipboard-sync"
+}
