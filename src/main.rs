@@ -1,4 +1,4 @@
-use clap::{crate_authors, crate_version, App, Arg};
+use clap::{crate_authors, crate_version, App, AppSettings, Arg};
 use clap_generate::{
     generate,
     generators::{Bash, Elvish, Fish, PowerShell, Zsh},
@@ -99,6 +99,7 @@ fn main() {
     let (sender, receiver) = crossbeam_channel::unbounded();
 
     let mut app = App::new("clipboard-sync")
+        .setting(AppSettings::SubcommandsNegateReqs)
         .author(crate_authors!())
         .version(crate_version!())
         .about("Sync clipboard over HTTP")
@@ -121,21 +122,26 @@ fn main() {
             Arg::new("mode")
                 .short('m')
                 .long("mode")
-                .required_unless_present("completion")
+                .required(true)
                 .takes_value(true)
                 .possible_values(&["server", "client"]),
         )
-        .arg(
-            Arg::new("completion")
-                .long("completion")
-                .takes_value(true)
-                .possible_values(&["bash", "elvish", "fish", "powershell", "zsh"]),
+        .subcommand(
+            App::new("init")
+                .about("Prints the shell function used to execute")
+                .arg(
+                    Arg::new("shell")
+                        .value_name("SHELL")
+                        .takes_value(true)
+                        .required(true)
+                        .possible_values(&["bash", "elvish", "fish", "powershell", "zsh"]),
+                ),
         );
 
     let matches = app.clone().get_matches();
 
-    if let Some(shell) = matches.value_of("completion") {
-        autocomplete(shell, &mut app);
+    if let Some(init) = matches.subcommand_matches("init") {
+        autocomplete(init.value_of("shell").unwrap(), &mut app);
         process::exit(0);
     }
 
