@@ -1,0 +1,22 @@
+[package]
+name = "clipboard-sync"
+version = "0.1.0"
+authors = ["Maxim Zhukov <mussitantesmortem@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+actix-rt = "1.1.1"
+actix-web = "3"
+clap = "3.0.0-beta.2"
+clap_generate = "3.0.0-beta.2"
+crossbeam-channel = "0.5.0"
+flexi_logger = "0.16.2"
+lazy_static = "1.4.0"
+log = "0.4.11"
+reqwest = { version = "0.10.9", features = ["blocking","json"] }
+serde = { version = "1.0.117", features = ["derive"] }
+serde_json = "1.0.59"
+tokio = { version = "0.2.6", features = ["full"] }
+x11-clipboard = "0.5.1"

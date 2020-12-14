@@ -1,0 +1,97 @@
+name: Rust
+
+on:
+  pull_request:
+  push:
+    branches:
+    - master
+    - staging
+    - trying
+
+env:
+  CARGO_TERM_COLOR: always
+  CI: 1
+
+jobs:
+  rust-audit:
+    name: Audit Rust vulnerabilities
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+      with:
+        fetch-depth: 0
+    - name: rust-audit-check
+      uses: actions-rs/audit-check@v1.2.0
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+  rust:
+    name: Rust
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+      with:
+        fetch-depth: 0
+
+    # We need to disable the existing toolchain to avoid updating rust-docs
+    # which takes a long time. The fastest way to do this is to rename the
+    # existing folder, as deleting it takes about as much time as not doing
+    # anything and just updating rust-docs.
+    - name: Rename existing rust toolchain (Windows)
+      if: matrix.os == 'windows-latest'
+      run: Rename-Item C:\Users\runneradmin\.rustup\toolchains\stable-x86_64-pc-windows-msvc C:\Users\runneradmin\.rustup\toolchains\stable-x86_64-pc-windows-msvc.old
+
+    - name: Install Rust toolchain
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        profile: minimal
+        override: true
+        components: rustfmt, rust-src
+
+#    - if: matrix.os == 'ubuntu-latest'
+#      run: sudo chown -R $(whoami):$(id -ng) ~/.cargo/
+
+#    - name: Cache
+#      uses: actions/cache@v2
+#      with:
+#        path: |
+#          ~/.cargo/registry
+#          ~/.cargo/git
+#          target
+#        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Compile
+      run: cargo test --no-run --locked
+
+    - name: Test
+      run: cargo test
+
+  linters:
+    name: "Linters"
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        fetch-depth: 0
+    - uses: actions-rs/toolchain@v1
+      with:
+          toolchain: nightly
+          components: clippy, rustfmt
+          override: true
+    - name: Check format
+      run: cargo fmt --all -- --check
+    - uses: actions-rs/clippy-check@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        args: --all-features
