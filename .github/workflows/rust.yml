@@ -36,6 +36,10 @@ jobs:
         os: [ubuntu-latest]
 
     steps:
+    - name: Install libxcb-shape0-dev
+      run: sudo apt-get install libxcb-shape0-dev
+    - name: Install libxcb-xfixes0-dev
+      run: sudo apt-get install libxcb-xfixes0-dev
     - name: Checkout repository
       uses: actions/checkout@v2
       with:
