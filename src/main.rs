@@ -80,7 +80,6 @@ fn server_mode(host: &str, port: u16, receiver: Receiver<String>) {
 }
 
 fn autocomplete(shell: &str, mut app: &mut App) {
-    eprintln!("Generating completion file for {}...", shell);
     match shell {
         "bash" => generate::<Bash, _>(&mut app, clap::crate_name!(), &mut io::stdout()),
         "elvish" => generate::<Elvish, _>(&mut app, clap::crate_name!(), &mut io::stdout()),
