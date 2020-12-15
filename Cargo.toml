@@ -18,5 +18,5 @@ log = "0.4.11"
 reqwest = { version = "0.10.9", features = ["blocking","json"] }
 serde = { version = "1.0.118", features = ["derive"] }
 serde_json = "1.0.60"
-tokio = { version = "0.2.6", features = ["full"] }
+tokio = { version = "0.3.6", features = ["full"] }
 x11-clipboard = "0.5.1"
