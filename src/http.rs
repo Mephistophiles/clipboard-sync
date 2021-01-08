@@ -1,5 +1,5 @@
 use super::Result;
-use actix_web::{get, post, rt, web, App, HttpServer};
+use actix_web::{get, post, web, App, HttpServer};
 use crossbeam_channel::Receiver;
 use log::{debug, info};
 use serde::{Deserialize, Serialize};
@@ -81,20 +81,18 @@ async fn get_clipboard(receiver: web::Data<Receiver<String>>) -> web::Json<Clipb
     web::Json(ClipboardResponse { contents, updated })
 }
 
-pub fn server(host: &str, port: u16, receiver: Receiver<String>) -> Result<()> {
+pub async fn server(host: &str, port: u16, receiver: Receiver<String>) -> Result<()> {
     info!("Listen on {} port", port);
-    let mut sys = rt::System::new("test");
 
-    let srv = HttpServer::new(move || {
+    HttpServer::new(move || {
         App::new()
             .data(receiver.clone())
             .service(push_clipboard)
             .service(get_clipboard)
     })
     .bind(format!("{}:{}", host, port))?
-    .run();
-
-    sys.block_on(srv)?;
+    .run()
+    .await?;
 
     Ok(())
 }

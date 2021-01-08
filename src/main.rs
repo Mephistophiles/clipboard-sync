@@ -6,12 +6,11 @@ use clap_generate::{
 use crossbeam_channel::Receiver;
 use lazy_static::lazy_static;
 use log::{debug, info};
-use reqwest::blocking::ClientBuilder;
+use reqwest::ClientBuilder;
 use std::{
     collections::{HashMap, HashSet},
     io, process,
     sync::Mutex,
-    thread,
     time::Duration,
 };
 
@@ -30,7 +29,7 @@ lazy_static! {
     pub static ref DISCOVERED_SERVICES: Mutex<HashSet<String>> = Mutex::new(HashSet::new());
 }
 
-fn fetch_updates(host: &str, port: u16) {
+async fn fetch_updates(host: &str, port: u16) {
     let poll_url = format!("http://{}:{}/get_clipboard", host, port);
 
     let client = ClientBuilder::new()
@@ -39,22 +38,22 @@ fn fetch_updates(host: &str, port: u16) {
         .unwrap();
 
     loop {
-        let response = match client.get(&poll_url).send() {
+        let response = match client.get(&poll_url).send().await {
             Ok(r) => r,
             Err(_) => continue,
         };
 
-        match response.json::<ClipboardResponse>().unwrap().contents {
+        match response.json::<ClipboardResponse>().await.unwrap().contents {
             Some(response) => clipboard::clipboard_update(response),
             None => continue,
         };
     }
 }
 
-fn client_mode(host: &str, port: u16, receiver: Receiver<String>) {
+async fn client_mode(host: &str, port: u16, receiver: Receiver<String>) {
     info!("run in client mode");
     let fetch_host = host.to_string();
-    thread::spawn(move || fetch_updates(&fetch_host, port));
+    actix_rt::spawn(async move { fetch_updates(&fetch_host, port).await });
 
     let poll_url = format!("http://{}:{}/push_clipboard", host, port);
     let client = ClientBuilder::new()
@@ -70,13 +69,13 @@ fn client_mode(host: &str, port: u16, receiver: Receiver<String>) {
         map.insert("contents", update);
 
         debug!("try update server {}:{}", host, port);
-        client.post(&poll_url).json(&map).send().unwrap();
+        client.post(&poll_url).json(&map).send().await.unwrap();
     }
 }
 
-fn server_mode(host: &str, port: u16, receiver: Receiver<String>) {
+async fn server_mode(host: &str, port: u16, receiver: Receiver<String>) {
     info!("run in server mode");
-    http::server(&host, port, receiver).unwrap()
+    http::server(&host, port, receiver).await.unwrap()
 }
 
 fn autocomplete(shell: &str, mut app: &mut App) {
@@ -90,11 +89,8 @@ fn autocomplete(shell: &str, mut app: &mut App) {
     }
 }
 
-fn main() {
-    flexi_logger::Logger::with_env_or_str("info")
-        .start()
-        .expect("logger");
-
+#[actix_web::main]
+async fn main() {
     let (sender, receiver) = crossbeam_channel::unbounded();
 
     let mut app = App::new("clipboard-sync")
@@ -125,6 +121,7 @@ fn main() {
                 .takes_value(true)
                 .possible_values(&["server", "client"]),
         )
+        .arg(Arg::new("verbose").short('v').multiple_occurrences(true))
         .subcommand(
             App::new("init")
                 .about("Prints the shell function used to execute")
@@ -139,6 +136,13 @@ fn main() {
 
     let matches = app.clone().get_matches();
 
+    let default_log_level = match matches.occurrences_of("verbose") {
+        0 => "warn",
+        1 => "info",
+        2 => "debug",
+        _ => "trace",
+    };
+
     if let Some(init) = matches.subcommand_matches("init") {
         autocomplete(init.value_of("shell").unwrap(), &mut app);
         process::exit(0);
@@ -147,11 +151,15 @@ fn main() {
     let host = matches.value_of("host").unwrap();
     let port = matches.value_of("port").unwrap().parse().unwrap();
 
-    thread::spawn(move || clipboard::clipboard_loop(sender).unwrap());
+    flexi_logger::Logger::with_env_or_str(default_log_level)
+        .start()
+        .expect("logger");
+
+    actix_rt::spawn(async move { clipboard::clipboard_loop(sender).await.unwrap() });
 
     match matches.value_of("mode") {
-        Some("server") => server_mode(host, port, receiver),
-        Some("client") => client_mode(host, port, receiver),
+        Some("server") => server_mode(host, port, receiver).await,
+        Some("client") => client_mode(host, port, receiver).await,
         _ => unreachable!(),
     }
 }
