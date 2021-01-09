@@ -3,65 +3,25 @@ use clap_generate::{
     generate,
     generators::{Bash, Elvish, Fish, PowerShell, Zsh},
 };
+use client::client;
 use clipboard::ClipboardContext;
 use crossbeam_channel::Receiver;
-use log::{debug, info};
-use reqwest::ClientBuilder;
-use std::{collections::HashMap, io, process, time::Duration};
+use log::info;
+use std::{io, process};
 
-use crate::http::ClipboardResponse;
-
+mod client;
 mod clipboard;
 mod error;
-mod http;
-
-async fn fetch_updates(host: &str, port: u16, ctx: ClipboardContext) {
-    let poll_url = format!("http://{}:{}/get_clipboard", host, port);
-
-    let client = ClientBuilder::new()
-        .timeout(Duration::from_secs(30))
-        .build()
-        .unwrap();
-
-    loop {
-        let response = match client.get(&poll_url).send().await {
-            Ok(r) => r,
-            Err(_) => continue,
-        };
-
-        match response.json::<ClipboardResponse>().await.unwrap().contents {
-            Some(response) => ctx.set(response).unwrap(),
-            None => continue,
-        };
-    }
-}
+mod server;
 
 async fn client_mode(host: &str, port: u16, ctx: ClipboardContext, receiver: Receiver<String>) {
     info!("run in client mode");
-    let fetch_host = host.to_string();
-    actix_rt::spawn(async move { fetch_updates(&fetch_host, port, ctx).await });
-
-    let poll_url = format!("http://{}:{}/push_clipboard", host, port);
-    let client = ClientBuilder::new()
-        .timeout(Duration::from_secs(60))
-        .build()
-        .unwrap();
-
-    debug!("enter in the loop");
-    loop {
-        let update = receiver.recv().unwrap();
-        debug!("got update: {:?}", update);
-        let mut map = HashMap::new();
-        map.insert("contents", update);
-
-        debug!("try update server {}:{}", host, port);
-        client.post(&poll_url).json(&map).send().await.unwrap();
-    }
+    client(host, port, ctx, receiver).await;
 }
 
 async fn server_mode(host: &str, port: u16, ctx: ClipboardContext, receiver: Receiver<String>) {
     info!("run in server mode");
-    http::server(&host, port, ctx, receiver).await.unwrap()
+    server::server(&host, port, ctx, receiver).await.unwrap()
 }
 
 fn autocomplete(shell: &str, mut app: &mut App) {

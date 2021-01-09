@@ -21,6 +21,12 @@ pub struct ClipboardContext {
     inner: Arc<Mutex<InnerClipboardContext>>,
 }
 
+impl Default for ClipboardContext {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ClipboardContext {
     pub fn new() -> Self {
         Self {
