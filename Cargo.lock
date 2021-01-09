@@ -470,7 +470,6 @@ dependencies = [
  "clap_generate",
  "crossbeam-channel",
  "flexi_logger",
- "lazy_static",
  "log",
  "reqwest",
  "serde",

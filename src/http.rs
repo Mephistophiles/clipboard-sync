@@ -1,12 +1,17 @@
-use super::Result;
+use crate::error::{ClipboardError, Error, Result};
 use actix_web::{get, post, web, App, HttpServer};
 use crossbeam_channel::Receiver;
 use log::{debug, info};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
-use x11_clipboard::Clipboard;
 
-use super::LAST_CLIPBOARD_CONTENT;
+use crate::clipboard::ClipboardContext;
+
+#[derive(Clone)]
+struct Context {
+    receiver: Receiver<String>,
+    clipboard: ClipboardContext,
+}
 
 #[derive(Serialize, Deserialize)]
 struct ClipboardUpdate {
@@ -30,50 +35,32 @@ fn get_contents(ClipboardUpdate { contents }: ClipboardUpdate) -> String {
 }
 
 #[post("/push_clipboard")]
-async fn push_clipboard(update: web::Json<ClipboardUpdate>) -> web::Json<Response> {
+async fn push_clipboard(
+    ctx: web::Data<Context>,
+    update: web::Json<ClipboardUpdate>,
+) -> web::Json<Response> {
     let contents = get_contents(update.into_inner());
-    {
-        let mut last_selection = LAST_CLIPBOARD_CONTENT.lock().unwrap();
-        debug!("Get content: {}", contents);
 
-        if *last_selection == contents {
-            return web::Json(Response {
-                success: false,
-                error: Some("Duplicated value".to_string()),
-            });
-        }
-        *last_selection = contents.clone();
+    match ctx.clipboard.set(contents) {
+        Ok(()) => web::Json(Response {
+            success: true,
+            error: None,
+        }),
+        Err(Error::ClipboardError(ClipboardError::DuplicatedValue)) => web::Json(Response {
+            success: false,
+            error: Some("Duplicated value".to_string()),
+        }),
+        Err(e) => web::Json(Response {
+            success: false,
+            error: Some(format!("Internal error: {:?}", e)),
+        }),
     }
-
-    let clipboard = match Clipboard::new() {
-        Ok(clipboard) => clipboard,
-        Err(e) => {
-            return web::Json(Response {
-                success: false,
-                error: Some(e.to_string()),
-            })
-        }
-    };
-
-    debug!("update clipboard");
-    clipboard
-        .store(
-            clipboard.getter.atoms.clipboard,
-            clipboard.getter.atoms.utf8_string,
-            contents,
-        )
-        .unwrap();
-
-    web::Json(Response {
-        success: true,
-        error: None,
-    })
 }
 
 #[get("/get_clipboard")]
-async fn get_clipboard(receiver: web::Data<Receiver<String>>) -> web::Json<ClipboardResponse> {
+async fn get_clipboard(ctx: web::Data<Context>) -> web::Json<ClipboardResponse> {
     debug!("Try to get clipboard");
-    let contents = receiver.recv_timeout(Duration::from_secs(30)).ok();
+    let contents = ctx.receiver.recv_timeout(Duration::from_secs(30)).ok();
     let updated = contents.is_some();
 
     debug!("Update: {:?}", contents);
@@ -81,18 +68,30 @@ async fn get_clipboard(receiver: web::Data<Receiver<String>>) -> web::Json<Clipb
     web::Json(ClipboardResponse { contents, updated })
 }
 
-pub async fn server(host: &str, port: u16, receiver: Receiver<String>) -> Result<()> {
+pub async fn server(
+    host: &str,
+    port: u16,
+    clipboard: ClipboardContext,
+    receiver: Receiver<String>,
+) -> Result<()> {
     info!("Listen on {} port", port);
+
+    let ctx = Context {
+        receiver,
+        clipboard,
+    };
 
     HttpServer::new(move || {
         App::new()
-            .data(receiver.clone())
+            .data(ctx.clone())
             .service(push_clipboard)
             .service(get_clipboard)
     })
-    .bind(format!("{}:{}", host, port))?
+    .bind(format!("{}:{}", host, port))
+    .map_err(Error::from)?
     .run()
-    .await?;
+    .await
+    .map_err(Error::from)?;
 
     Ok(())
 }

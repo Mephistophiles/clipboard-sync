@@ -3,33 +3,19 @@ use clap_generate::{
     generate,
     generators::{Bash, Elvish, Fish, PowerShell, Zsh},
 };
+use clipboard::ClipboardContext;
 use crossbeam_channel::Receiver;
-use lazy_static::lazy_static;
 use log::{debug, info};
 use reqwest::ClientBuilder;
-use std::{
-    collections::{HashMap, HashSet},
-    io, process,
-    sync::Mutex,
-    time::Duration,
-};
+use std::{collections::HashMap, io, process, time::Duration};
 
 use crate::http::ClipboardResponse;
 
 mod clipboard;
+mod error;
 mod http;
 
-const SERVICE_DEFAULT_PORT: u16 = 8000;
-
-pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
-
-lazy_static! {
-    pub static ref LAST_CLIPBOARD_CONTENT: Mutex<String> = Mutex::new(String::new());
-    pub static ref CURRENT_PORT: Mutex<u16> = Mutex::new(SERVICE_DEFAULT_PORT);
-    pub static ref DISCOVERED_SERVICES: Mutex<HashSet<String>> = Mutex::new(HashSet::new());
-}
-
-async fn fetch_updates(host: &str, port: u16) {
+async fn fetch_updates(host: &str, port: u16, ctx: ClipboardContext) {
     let poll_url = format!("http://{}:{}/get_clipboard", host, port);
 
     let client = ClientBuilder::new()
@@ -44,16 +30,16 @@ async fn fetch_updates(host: &str, port: u16) {
         };
 
         match response.json::<ClipboardResponse>().await.unwrap().contents {
-            Some(response) => clipboard::clipboard_update(response),
+            Some(response) => ctx.set(response).unwrap(),
             None => continue,
         };
     }
 }
 
-async fn client_mode(host: &str, port: u16, receiver: Receiver<String>) {
+async fn client_mode(host: &str, port: u16, ctx: ClipboardContext, receiver: Receiver<String>) {
     info!("run in client mode");
     let fetch_host = host.to_string();
-    actix_rt::spawn(async move { fetch_updates(&fetch_host, port).await });
+    actix_rt::spawn(async move { fetch_updates(&fetch_host, port, ctx).await });
 
     let poll_url = format!("http://{}:{}/push_clipboard", host, port);
     let client = ClientBuilder::new()
@@ -73,9 +59,9 @@ async fn client_mode(host: &str, port: u16, receiver: Receiver<String>) {
     }
 }
 
-async fn server_mode(host: &str, port: u16, receiver: Receiver<String>) {
+async fn server_mode(host: &str, port: u16, ctx: ClipboardContext, receiver: Receiver<String>) {
     info!("run in server mode");
-    http::server(&host, port, receiver).await.unwrap()
+    http::server(&host, port, ctx, receiver).await.unwrap()
 }
 
 fn autocomplete(shell: &str, mut app: &mut App) {
@@ -155,11 +141,14 @@ async fn main() {
         .start()
         .expect("logger");
 
-    actix_rt::spawn(async move { clipboard::clipboard_loop(sender).await.unwrap() });
+    let clipboard_ctx = ClipboardContext::new();
+
+    let ctx = clipboard_ctx.clone();
+    actix_rt::spawn(async move { clipboard::clipboard_loop(ctx, sender).await.unwrap() });
 
     match matches.value_of("mode") {
-        Some("server") => server_mode(host, port, receiver).await,
-        Some("client") => client_mode(host, port, receiver).await,
+        Some("server") => server_mode(host, port, clipboard_ctx, receiver).await,
+        Some("client") => client_mode(host, port, clipboard_ctx, receiver).await,
         _ => unreachable!(),
     }
 }
