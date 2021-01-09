@@ -1,5 +1,5 @@
 pkgname=clipboard-sync-git
-pkgver=0.1.3.21.g9abfb31
+pkgver=0.1.4.28.ged39e2d
 pkgrel=1
 epoch=1
 pkgdesc="An clipboard sync over HTTP"
@@ -26,5 +26,5 @@ build() {
 
 package() {
 	cd $pkgname
-	install -D -m755 "$srcdir/$pkgname/target/release/clipboard-sync" "$pkgdir/usr/bin/clipboard-sync"
+	install -s -D -m755 "$srcdir/$pkgname/target/release/clipboard-sync" "$pkgdir/usr/bin/clipboard-sync"
 }
