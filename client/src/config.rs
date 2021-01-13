@@ -3,27 +3,9 @@ use clap_generate::{
     generate,
     generators::{Bash, Elvish, Fish, PowerShell, Zsh},
 };
-use std::{io, process, str::FromStr};
-
-pub enum Mode {
-    Client,
-    Server,
-}
-
-impl FromStr for Mode {
-    type Err = ();
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(match s {
-            "server" => Mode::Server,
-            "client" => Mode::Client,
-            _ => unreachable!(),
-        })
-    }
-}
+use std::{io, process};
 
 pub struct Config {
-    pub mode: Mode,
     pub host: String,
     pub port: u16,
     pub default_log_level: &'static str,
@@ -52,8 +34,7 @@ impl Config {
                     .short('h')
                     .long("host")
                     .takes_value(true)
-                    .required_if_eq("mode", "client")
-                    .default_value("0.0.0.0"),
+                    .default_value("localhost"),
             )
             .arg(
                 Arg::new("port")
@@ -61,14 +42,6 @@ impl Config {
                     .long("port")
                     .takes_value(true)
                     .default_value("8000"),
-            )
-            .arg(
-                Arg::new("mode")
-                    .short('m')
-                    .long("mode")
-                    .required(true)
-                    .takes_value(true)
-                    .possible_values(&["server", "client"]),
             )
             .arg(Arg::new("verbose").short('v').multiple_occurrences(true))
             .subcommand(
@@ -99,10 +72,8 @@ impl Config {
 
         let host = matches.value_of("host").unwrap().to_string();
         let port = matches.value_of("port").unwrap().parse().unwrap();
-        let mode = matches.value_of("mode").unwrap().parse().unwrap();
 
         Self {
-            mode,
             host,
             port,
             default_log_level,
