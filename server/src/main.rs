@@ -1,82 +1,63 @@
-use std::sync::Arc;
-
-use actix_web::{get, post, web, App, HttpServer};
 use config::Config;
 use log::{info, warn};
-use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
-use web::Json;
+
+use tonic::{transport::Server, Request, Response, Status};
+
+use clipboard_sync_lib::clipboard::{
+    clipboard_server::{Clipboard, ClipboardServer},
+    GetRequest, GetResponse, SetRequest, SetResponse,
+};
 
 mod config;
 
-#[derive(Serialize, Deserialize, Default)]
+#[derive(Default)]
 struct SimpleDB {
     epoch: u64,
     content: String,
 }
 
-#[derive(Clone, Default)]
-struct Context {
-    db: Arc<Mutex<SimpleDB>>,
+#[derive(Default)]
+struct MyClipboard {
+    db: Mutex<SimpleDB>,
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct SetRequest {
-    #[serde(flatten)]
-    db: SimpleDB,
-}
-
-#[derive(Serialize, Deserialize)]
-struct SetResponse {
-    success: bool,
-    message: &'static str,
-}
-
-#[derive(Serialize, Deserialize)]
-struct GetResponse {
-    #[serde(flatten)]
-    db: SimpleDB,
-}
-
-#[post("/set")]
-async fn set_clipboard(
-    ctx: web::Data<Context>,
-    request: web::Json<SetRequest>,
-) -> web::Json<SetResponse> {
-    let mut db = ctx.db.lock().await;
-
-    if db.epoch != request.db.epoch {
-        warn!("Outdated request!");
-        return Json(SetResponse {
-            success: false,
-            message: "Outdated",
-        });
-    }
-
-    db.epoch += 1;
-    db.content = request.db.content.clone();
-
-    info!("next epoch {}: {:?}", db.epoch, db.content);
-
-    Json(SetResponse {
-        success: true,
-        message: "Success",
-    })
-}
-
-#[get("/get")]
-async fn get_clipboard(ctx: web::Data<Context>) -> web::Json<GetResponse> {
-    let db = ctx.db.lock().await;
-
-    Json(GetResponse {
-        db: SimpleDB {
+#[tonic::async_trait]
+impl Clipboard for MyClipboard {
+    async fn get(&self, _request: Request<GetRequest>) -> Result<Response<GetResponse>, Status> {
+        let db = self.db.lock().await;
+        let reply = GetResponse {
             epoch: db.epoch,
             content: db.content.clone(),
-        },
-    })
+        };
+
+        Ok(Response::new(reply))
+    }
+
+    async fn set(&self, request: Request<SetRequest>) -> Result<Response<SetResponse>, Status> {
+        let mut db = self.db.lock().await;
+        let request = request.into_inner();
+
+        if db.epoch != request.epoch {
+            warn!("Outdated request!");
+            return Ok(Response::new(SetResponse {
+                success: false,
+                message: "Outdated".to_string(),
+            }));
+        }
+
+        db.epoch += 1;
+        db.content = request.content;
+        info!("next epoch {}: {:?}", db.epoch, db.content);
+
+        return Ok(Response::new(SetResponse {
+            success: true,
+            message: "".to_string(),
+        }));
+    }
 }
 
-#[actix_web::main]
+#[tokio::main]
 async fn main() {
     let config = Config::from_args();
     flexi_logger::Logger::with_env_or_str(config.default_log_level)
@@ -85,17 +66,12 @@ async fn main() {
 
     info!("Listen on {} port", config.port);
 
-    let context: Context = Default::default();
+    let addr = format!("{}:{}", config.host, config.port).parse().unwrap();
+    let clipboard = MyClipboard::default();
 
-    HttpServer::new(move || {
-        App::new()
-            .data(context.clone())
-            .service(get_clipboard)
-            .service(set_clipboard)
-    })
-    .bind(format!("{}:{}", config.host, config.port))
-    .unwrap()
-    .run()
-    .await
-    .unwrap();
+    Server::builder()
+        .add_service(ClipboardServer::new(clipboard))
+        .serve(addr)
+        .await
+        .unwrap();
 }

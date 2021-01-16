@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package clipboard_sync;
+
+message GetRequest {
+}
+
+message GetResponse {
+	uint64 epoch = 1;
+	string content = 2;
+}
+
+message SetRequest {
+	uint64 epoch = 1;
+	string content = 2;
+}
+
+message SetResponse {
+	bool success = 1;
+	string message = 2;
+}
+
+service Clipboard {
+	rpc Get(GetRequest) returns (GetResponse);
+	rpc Set(SetRequest) returns (SetResponse);
+}

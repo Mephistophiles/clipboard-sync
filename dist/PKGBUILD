@@ -1,5 +1,5 @@
 pkgname=clipboard-sync-git
-pkgver=0.1.4.32.g093dc0e
+pkgver=0.2.0.34.g63a6122
 pkgrel=1
 epoch=1
 pkgdesc="An clipboard sync over HTTP"

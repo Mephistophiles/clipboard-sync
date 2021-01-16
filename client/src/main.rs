@@ -1,93 +1,51 @@
-use std::sync::Arc;
-
 use clipboard::ClipboardContext;
+use clipboard_sync_lib::clipboard::{
+    clipboard_client::{self, ClipboardClient},
+    GetRequest, GetResponse, SetRequest, SetResponse,
+};
 use config::Config;
 use log::info;
-use reqwest::Client;
-use serde::{Deserialize, Serialize};
-use tokio::{sync::Mutex, time, time::Duration};
+use tokio::{time, time::Duration};
+use tonic::transport::Channel;
 
 mod clipboard;
 mod config;
 
-struct GlobalContext<'a> {
-    get_url: &'a str,
-    set_url: &'a str,
-    http_client: &'a Client,
-    clipboard: &'a ClipboardContext,
-    db: Mutex<SimpleDB>,
-}
-
-// TODO: move out to the library
-#[derive(Serialize, Deserialize, Default, Debug)]
+#[derive(Default)]
 struct SimpleDB {
     epoch: u64,
     content: String,
 }
 
-#[derive(Clone, Default)]
-struct Context {
-    db: Arc<Mutex<SimpleDB>>,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct SetRequest {
-    #[serde(flatten)]
+struct GlobalContext<'a> {
+    proto_client: ClipboardClient<Channel>,
+    clipboard: &'a ClipboardContext,
     db: SimpleDB,
 }
 
-#[derive(Serialize, Deserialize)]
-struct SetResponse {
-    success: bool,
-    message: String,
+async fn get_clipboard(context: &mut GlobalContext<'_>) -> Option<GetResponse> {
+    let response = context.proto_client.get(GetRequest {}).await.ok()?;
+    Some(response.into_inner())
 }
 
-#[derive(Serialize, Deserialize)]
-struct GetResponse {
-    #[serde(flatten)]
-    db: SimpleDB,
+async fn set_clipboard(context: &mut GlobalContext<'_>, req: SetRequest) -> Option<SetResponse> {
+    info!("try to push epoch {}: {}", req.epoch, req.content);
+    Some(context.proto_client.set(req).await.ok()?.into_inner())
 }
 
-async fn get_clipboard(context: &GlobalContext<'_>) -> Option<GetResponse> {
-    context
-        .http_client
-        .get(context.get_url)
-        .send()
-        .await
-        .ok()?
-        .json::<GetResponse>()
-        .await
-        .ok()
-}
-
-async fn set_clipboard(context: &GlobalContext<'_>, c: SetRequest) -> Option<SetResponse> {
-    info!("try to push epoch {}: {}", c.db.epoch, c.db.content);
-    context
-        .http_client
-        .post(context.set_url)
-        .json(&c)
-        .send()
-        .await
-        .ok()?
-        .json()
-        .await
-        .ok()
-}
-
-async fn check_clipboard<'a>(context: &GlobalContext<'_>) -> Option<()> {
-    let mut db = context.db.lock().await;
+async fn check_clipboard<'a>(context: &mut GlobalContext<'_>) -> Option<()> {
     let server_clipboard = get_clipboard(context).await?;
 
-    if db.epoch < server_clipboard.db.epoch {
+    if context.db.epoch < server_clipboard.epoch {
         context
             .clipboard
-            .set(server_clipboard.db.content.clone())
+            .set(server_clipboard.content.clone())
             .await;
-        db.content = server_clipboard.db.content;
-        db.epoch = server_clipboard.db.epoch;
+        context.db.content = server_clipboard.content;
+        context.db.epoch = server_clipboard.epoch;
         info!(
             "Got update from server: epoch {} {:?}",
-            db.epoch, db.content,
+            context.db.epoch, context.db.content,
         );
 
         // skip next clip update
@@ -97,7 +55,7 @@ async fn check_clipboard<'a>(context: &GlobalContext<'_>) -> Option<()> {
 
     let update = context.clipboard.get().await?;
 
-    if update == db.content {
+    if update == context.db.content {
         return Some(());
     }
 
@@ -105,16 +63,14 @@ async fn check_clipboard<'a>(context: &GlobalContext<'_>) -> Option<()> {
     set_clipboard(
         context,
         SetRequest {
-            db: SimpleDB {
-                epoch: db.epoch,
-                content: update.clone(),
-            },
+            epoch: context.db.epoch,
+            content: update.clone(),
         },
     )
     .await;
 
-    db.epoch += 1;
-    db.content = update;
+    context.db.epoch += 1;
+    context.db.content = update;
 
     Some(())
 }
@@ -122,27 +78,27 @@ async fn check_clipboard<'a>(context: &GlobalContext<'_>) -> Option<()> {
 #[tokio::main]
 async fn main() {
     let config = Config::from_args();
+    let client = clipboard_client::ClipboardClient::connect(format!(
+        "http://{}:{}",
+        config.host, config.port
+    ))
+    .await
+    .unwrap();
 
     flexi_logger::Logger::with_env_or_str(config.default_log_level)
         .start()
         .expect("logger");
 
-    let get_url = format!("http://{}:{}/get", config.host, config.port);
-    let set_url = format!("http://{}:{}/set", config.host, config.port);
-    let client = reqwest::Client::new();
-
     let clipboard_ctx = ClipboardContext::new();
 
-    let global_context = GlobalContext {
-        get_url: &get_url,
-        set_url: &set_url,
-        http_client: &client,
+    let mut global_context = GlobalContext {
+        proto_client: client,
         clipboard: &clipboard_ctx,
         db: Default::default(),
     };
 
     loop {
-        check_clipboard(&global_context).await;
+        check_clipboard(&mut global_context).await;
         time::sleep(Duration::from_millis(200)).await;
     }
 }
