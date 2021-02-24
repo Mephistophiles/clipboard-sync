@@ -41,30 +41,14 @@ impl Config {
             Type::Client => "clipboard-sync",
             Type::Server => "clipboard-sync-server",
         };
-        let host = match t {
-            Type::Client => "localhost",
-            Type::Server => "0.0.0.0",
-        };
 
         let mut app = App::new(app_name)
             .setting(AppSettings::SubcommandsNegateReqs)
             .author(crate_authors!())
             .version(crate_version!())
             .about("Sync clipboard over HTTP")
-            .arg(
-                Arg::new("host")
-                    .short('h')
-                    .long("host")
-                    .takes_value(true)
-                    .default_value(host),
-            )
-            .arg(
-                Arg::new("port")
-                    .short('p')
-                    .long("port")
-                    .takes_value(true)
-                    .default_value("8000"),
-            )
+            .arg(Arg::new("host").short('h').long("host").takes_value(true))
+            .arg(Arg::new("port").short('p').long("port").takes_value(true))
             .arg(Arg::new("verbose").short('v').multiple_occurrences(true))
             .subcommand(
                 App::new("init")
