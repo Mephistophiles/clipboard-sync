@@ -173,7 +173,7 @@ dependencies = [
 
 [[package]]
 name = "clipboard-sync"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "clap",
  "clap_generate",
@@ -188,7 +188,7 @@ dependencies = [
 
 [[package]]
 name = "clipboard-sync-lib"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "clap",
  "clap_generate",
@@ -202,7 +202,7 @@ dependencies = [
 
 [[package]]
 name = "clipboard-sync-server"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "clap",
  "clap_generate",
