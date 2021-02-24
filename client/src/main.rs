@@ -1,15 +1,16 @@
 use clipboard::ClipboardContext;
-use clipboard_sync_lib::clipboard::{
-    clipboard_client::{self, ClipboardClient},
-    GetRequest, GetResponse, SetRequest, SetResponse,
+use clipboard_sync_lib::{
+    clipboard::{
+        clipboard_client::{self, ClipboardClient},
+        GetRequest, GetResponse, SetRequest, SetResponse,
+    },
+    config::{Config, Type},
 };
-use config::Config;
 use log::info;
 use tokio::{time, time::Duration};
 use tonic::transport::Channel;
 
 mod clipboard;
-mod config;
 
 #[derive(Default)]
 struct SimpleDB {
@@ -77,15 +78,15 @@ async fn check_clipboard<'a>(context: &mut GlobalContext<'_>) -> Option<()> {
 
 #[tokio::main]
 async fn main() {
-    let config = Config::from_args();
+    let config = Config::load(Type::Client);
     let client = clipboard_client::ClipboardClient::connect(format!(
         "http://{}:{}",
-        config.host, config.port
+        config.client.host, config.client.port
     ))
     .await
     .unwrap();
 
-    flexi_logger::Logger::with_env_or_str(config.default_log_level)
+    flexi_logger::Logger::with_env_or_str(&config.client.log_level)
         .start()
         .expect("logger");
 

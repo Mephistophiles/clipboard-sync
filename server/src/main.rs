@@ -1,15 +1,14 @@
-use config::Config;
-use log::{info, warn};
-use tokio::sync::Mutex;
-
-use tonic::{transport::Server, Request, Response, Status};
-
-use clipboard_sync_lib::clipboard::{
-    clipboard_server::{Clipboard, ClipboardServer},
-    GetRequest, GetResponse, SetRequest, SetResponse,
+use clipboard_sync_lib::{
+    clipboard::{
+        clipboard_server::{Clipboard, ClipboardServer},
+        GetRequest, GetResponse, SetRequest, SetResponse,
+    },
+    config::{Config, Type},
 };
-
-mod config;
+use log::{info, warn};
+use std::net::SocketAddr;
+use tokio::sync::Mutex;
+use tonic::{transport::Server, Request, Response, Status};
 
 #[derive(Default)]
 struct SimpleDB {
@@ -59,14 +58,14 @@ impl Clipboard for MyClipboard {
 
 #[tokio::main]
 async fn main() {
-    let config = Config::from_args();
-    flexi_logger::Logger::with_env_or_str(config.default_log_level)
+    let config = Config::load(Type::Server);
+    flexi_logger::Logger::with_env_or_str(&config.server.log_level)
         .start()
         .expect("logger");
 
-    info!("Listen on {} port", config.port);
+    info!("Listen on {} port", config.server.port);
 
-    let addr = format!("{}:{}", config.host, config.port).parse().unwrap();
+    let addr = SocketAddr::new(config.server.host, config.server.port);
     let clipboard = MyClipboard::default();
 
     Server::builder()
