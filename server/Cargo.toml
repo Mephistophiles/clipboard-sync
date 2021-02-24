@@ -1,6 +1,6 @@
 [package]
 name = "clipboard-sync-server"
-version = "0.3.2"
+version = "0.3.3"
 authors = ["Maxim Zhukov <mussitantesmortem@gmail.com>"]
 edition = "2018"
 

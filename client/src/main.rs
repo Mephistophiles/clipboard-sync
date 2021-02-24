@@ -8,7 +8,7 @@ use clipboard_sync_lib::{
 };
 use log::info;
 use tokio::{time, time::Duration};
-use tonic::transport::Channel;
+use tonic::transport::{Certificate, Channel, ClientTlsConfig};
 
 mod clipboard;
 
@@ -79,18 +79,46 @@ async fn check_clipboard<'a>(context: &mut GlobalContext<'_>) -> Option<()> {
 #[tokio::main]
 async fn main() {
     let config = Config::load(Type::Client);
-    let client = clipboard_client::ClipboardClient::connect(format!(
-        "http://{}:{}",
-        config.client.host, config.client.port
-    ))
-    .await
-    .unwrap();
 
     flexi_logger::Logger::with_env_or_str(&config.client.log_level)
         .start()
         .expect("logger");
 
     let clipboard_ctx = ClipboardContext::new();
+    let url = format!(
+        "{}://{}:{}",
+        if config.client.root_ca.is_some() {
+            "https"
+        } else {
+            "http"
+        },
+        config.client.host,
+        config.client.port
+    );
+
+    let client = if config.client.root_ca.is_some() {
+        let cert = tokio::fs::read(config.client.root_ca.unwrap())
+            .await
+            .unwrap();
+        let cert = Certificate::from_pem(cert);
+
+        let tls_ops = ClientTlsConfig::new().ca_certificate(cert);
+
+        let channel = Channel::from_shared(url.clone())
+            .unwrap()
+            .tls_config(tls_ops)
+            .unwrap()
+            .connect()
+            .await
+            .unwrap();
+
+        info!("Connecting to {}", url);
+        clipboard_client::ClipboardClient::new(channel)
+    } else {
+        clipboard_client::ClipboardClient::connect(url)
+            .await
+            .unwrap()
+    };
 
     let mut global_context = GlobalContext {
         proto_client: client,

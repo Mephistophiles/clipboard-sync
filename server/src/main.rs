@@ -8,7 +8,10 @@ use clipboard_sync_lib::{
 use log::{info, warn};
 use std::net::SocketAddr;
 use tokio::sync::Mutex;
-use tonic::{transport::Server, Request, Response, Status};
+use tonic::{
+    transport::{Identity, Server, ServerTlsConfig},
+    Request, Response, Status,
+};
 
 #[derive(Default)]
 struct SimpleDB {
@@ -63,12 +66,24 @@ async fn main() {
         .start()
         .expect("logger");
 
-    info!("Listen on {} port", config.server.port);
+    info!("Listening on {}:{}", config.server.host, config.server.port);
 
-    let addr = SocketAddr::new(config.server.host, config.server.port);
+    let addr = SocketAddr::new(config.server.host.parse().unwrap(), config.server.port);
     let clipboard = MyClipboard::default();
 
-    Server::builder()
+    let mut server = if config.server.cert.is_some() {
+        let cert = tokio::fs::read(config.server.cert.unwrap()).await.unwrap();
+        let key = tokio::fs::read(config.server.key.unwrap()).await.unwrap();
+        let server_identity = Identity::from_pem(cert, key);
+
+        let tls = ServerTlsConfig::new().identity(server_identity);
+
+        Server::builder().tls_config(tls).unwrap()
+    } else {
+        Server::builder()
+    };
+
+    server
         .add_service(ClipboardServer::new(clipboard))
         .serve(addr)
         .await

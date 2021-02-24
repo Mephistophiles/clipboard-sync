@@ -4,7 +4,7 @@ use clap_generate::{
     generators::{Bash, Elvish, Fish, PowerShell, Zsh},
 };
 use serde::Deserialize;
-use std::{fs, io, net::IpAddr, process};
+use std::{fs, io, path::PathBuf, process};
 
 pub enum Type {
     Server,
@@ -13,9 +13,13 @@ pub enum Type {
 
 #[derive(Deserialize)]
 pub struct Settings {
-    pub host: IpAddr,
+    pub host: String,
     pub port: u16,
     pub log_level: String,
+
+    pub root_ca: Option<PathBuf>,
+    pub key: Option<PathBuf>,
+    pub cert: Option<PathBuf>,
 }
 
 #[derive(Deserialize)]
@@ -92,6 +96,12 @@ impl Config {
         if matches.is_present("port") {
             settings.port = matches.value_of("port").unwrap().parse().unwrap();
         }
+
+        assert!(self.client.cert.is_none());
+        assert!(self.client.key.is_none());
+
+        assert!(self.server.root_ca.is_none());
+        assert_eq!(self.server.cert.is_some(), self.server.key.is_some());
     }
 }
 
