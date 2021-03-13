@@ -114,12 +114,8 @@ impl Config {
 
         home_dir.push("config.toml");
 
-        let f = fs::read_to_string(&home_dir).unwrap_or_else(|_| {
-            panic!(format!(
-                "Unable to open {}. Please configure.",
-                home_dir.display()
-            ))
-        });
+        let f = fs::read_to_string(&home_dir)
+            .unwrap_or_else(|_| panic!("Unable to open {}. Please configure.", home_dir.display()));
 
         let mut c: Config = toml::from_str(&f).unwrap();
         c.from_args(t);
