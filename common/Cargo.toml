@@ -9,7 +9,7 @@ edition = "2018"
 [dependencies]
 clap = "3.0.0-beta.2"
 clap_generate = "3.0.0-beta.2"
-dirs = "3.0.1"
+dirs = "3.0.2"
 prost = "0.7"
 serde = { version = "1.0.125", features = ["derive"] }
 toml = "0.5.8"
